@@ -132,13 +132,13 @@ def preparar(bruto: pd.DataFrame) -> pd.DataFrame:
     # segmentos
     df["grupo_mercado"] = np.select(
         [df["situacao"].isin(C.DENTRO_MERCADO), df["situacao"].isin(C.FORA_MERCADO)],
-        ["Dentro do mercado", "Fora do mercado (buscando vaga)"], default=None)
+        ["Dentro do mercado", "Fora do mercado"], default=None)
     faixas = pd.Series(pd.NA, index=df.index, dtype="object")
     for lo, hi, rot in C.FAIXAS_EXP:
         faixas[(df["exp_anos"] > lo) & (df["exp_anos"] <= hi)] = rot
     df["faixa_exp"] = faixas
-    canais_conhecidos = {"Indicação de amigo(a) ou colega", "WhatsApp", "LinkedIn", "Instagram",
-                         "Discord", "Telegram", "E-mail", "Reddit", "Twitter/X"}
+    canais_conhecidos = {"Indicação de amigo(a) ou colega", "WhatsApp", "LinkedIn",
+                         "Discord", "Telegram", "Reddit"}
     df["canal_grupo"] = df["canal"].where(df["canal"].isin(canais_conhecidos) | df["canal"].isna(), "Outro")
     df["data"] = df["ts"].dt.date
     return df

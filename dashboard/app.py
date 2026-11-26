@@ -324,7 +324,8 @@ def pagina_qps():
 
     with abas[2]:
         st.subheader(f"QP3 · {QPS['QP3']}")
-        st.caption("Dentro do mercado: CLT, PJ ou freelancer. Fora: desempregado(a) ou buscando o primeiro emprego.")
+        st.caption("Dentro do mercado: CLT, PJ ou freelancer. Fora: desempregado(a), buscando o primeiro emprego "
+                   "ou que saiu da área de desenvolvimento.")
         cartao_teste(res[3])
         st.plotly_chart(G.caixa_por_grupo(AMOSTRA, EMP, "grupo_mercado"), width="stretch")
         cartao_teste(res[4])
@@ -333,6 +334,27 @@ def pagina_qps():
         cartao_teste(res[5])
         st.plotly_chart(G.caixa_por_grupo(AMOSTRA, EMP, "senioridade", C.SENIORIDADE_ORDEM),
                         width="stretch", key="qp3c")
+
+        fora = AMOSTRA[AMOSTRA["grupo_mercado"] == "Fora do mercado"]
+        st.subheader("Busca por vaga (só quem está fora do mercado)")
+        st.caption("O formulário só faz estas três perguntas a quem está fora do mercado, então não há "
+                   "comparação com quem está dentro. Os valores são aproximados e há poucas respostas, "
+                   "por isso o dashboard mostra medianas e os valores individuais.")
+        if len(fora) == 0:
+            st.info("Nenhuma resposta de quem está fora do mercado com os filtros atuais.")
+        else:
+            tot_cand, tot_ent = fora["candidaturas"].sum(), fora["entrevistas"].sum()
+            c = st.columns(4)
+            c[0].metric("Respondentes", len(fora))
+            c[1].metric("Meses buscando (mediana)", num(fora["meses_busca"].median(), 0))
+            c[2].metric("Candidaturas em 3 meses (mediana)", num(fora["candidaturas"].median(), 0))
+            c[3].metric("Entrevistas por candidatura", pct(tot_ent / tot_cand) if tot_cand else "—",
+                        help="Total de entrevistas dividido pelo total de candidaturas do grupo")
+            st.dataframe(fora[["situacao", "meses_busca", "candidaturas", "entrevistas"]]
+                         .rename(columns={"situacao": "Situação", "meses_busca": "Meses buscando",
+                                          "candidaturas": "Candidaturas (3 meses)",
+                                          "entrevistas": "Entrevistas (3 meses)"}),
+                         hide_index=True, width="stretch")
 
     with abas[3]:
         st.subheader(f"QP4 · {QPS['QP4']}")

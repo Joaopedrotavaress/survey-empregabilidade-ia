@@ -68,7 +68,7 @@ USO_IA = {
 PROF_IA = {"Nenhuma": 0, "Básica": 1, "Intermediária": 2, "Avançada": 3, "Especialista": 4}
 
 SENIORIDADE_ORDEM = [
-    "Estágio ou trainee", "Júnior", "Pleno", "Sênior", "Especialista, tech lead ou acima",
+    "Ainda não trabalhei como dev", "Estágio ou trainee", "Júnior", "Pleno", "Sênior", "Especialista, tech lead ou acima",
 ]
 PORTE_ORDEM = [
     "Até 49 pessoas", "50 a 249 pessoas", "250 a 999 pessoas", "1.000 pessoas ou mais",
@@ -78,7 +78,8 @@ FAIXAS_EXP = [(-1, 1, "0 a 1 ano"), (1, 4, "2 a 4 anos"), (4, 9, "5 a 9 anos"), 
 
 # Situação -> grupo de mercado (QP3). Respostas fora daqui saem da população.
 DENTRO_MERCADO = {"Empregado(a) com carteira assinada (CLT)", "Contrato PJ", "Freelancer ou autônomo(a)"}
-FORA_MERCADO = {"Desempregado(a), buscando vaga de dev", "Buscando o primeiro emprego como dev"}
+FORA_MERCADO = {"Desempregado(a), buscando vaga de dev", "Buscando o primeiro emprego como dev",
+                "Saí da área de desenvolvimento"}
 FORA_POPULACAO_PREFIXO = "Não atuo"
 
 # Construtos medidos por mais de um item. "inv" = item invertido (6 - valor).
