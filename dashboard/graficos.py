@@ -100,7 +100,7 @@ def barras_contagem(serie: pd.Series, ordem: list[str] | None = None, altura: in
 
 
 def caixa_por_grupo(df: pd.DataFrame, y: str, grupo: str, ordem: list[str] | None = None,
-                    faixa: tuple[float, float] = (1, 5)) -> go.Figure:
+                    faixa: tuple[float, float] = (1, 5), ylab: str | None = None) -> go.Figure:
     dados = df[[y, grupo]].dropna()
     niveis = ordem or sorted(dados[grupo].unique())
     niveis = [n for n in niveis if n in set(dados[grupo])]
@@ -112,7 +112,7 @@ def caixa_por_grupo(df: pd.DataFrame, y: str, grupo: str, ordem: list[str] | Non
                     line=dict(width=2), fillcolor="rgba(0,0,0,0)",
                     hovertemplate="%{y:.2f}<extra></extra>")
     fig.update_yaxes(range=[faixa[0] - 0.3, faixa[1] + 0.3], showgrid=True,
-                     gridcolor="rgba(128,128,128,0.15)", title=y)
+                     gridcolor="rgba(128,128,128,0.15)", title=ylab or y)
     fig.add_hline(y=(faixa[0] + faixa[1]) / 2, line_dash="dot", line_color="gray",
                   annotation_text="neutro", annotation_position="top left")
     return _layout(fig, 360, showlegend=False)
@@ -138,13 +138,13 @@ def funil_descartes(df: pd.DataFrame, motivos: list[str]) -> go.Figure:
     etapas, valores, perdas = ["Recebidas"], [restante], [""]
     cont = df["motivo_descarte"].value_counts()
     curtos = {
-        "Não aceitou o termo de consentimento": "Aceitou o termo",
-        "Menor de 18 anos": "Maior de 18",
-        "Colega da turma (regra da disciplina)": "Não é da turma",
-        "Fora da população (não atua nem busca atuar como dev)": "Na população-alvo",
-        "Errou a pergunta de atenção": "Acertou a atenção",
-        "Questionário principal incompleto": "Questionário completo",
-        "Resposta duplicada": "Sem duplicatas",
+        "D1 · Não aceitou o termo de consentimento": "D1 · Aceitou o termo",
+        "D1 · Menor de 18 anos": "D1 · Maior de 18",
+        "D2 · Colega da turma": "D2 · Não é da turma",
+        "D2 · Fora da população (não atua nem busca atuar como dev)": "D2 · Na população-alvo",
+        "D3 · Errou a pergunta de atenção (AT1)": "D3 · Acertou AT1",
+        "D4 · Mesma resposta em todos os itens Likert": "D4 · Respostas variadas",
+        "D5 · Resposta duplicada": "D5 · Sem duplicatas",
     }
     for m in motivos:
         k = int(cont.get(m, 0))
@@ -207,7 +207,7 @@ def floresta_efeitos(res) -> go.Figure:
         customdata=[[r.efeito_nome, r.p, r.p_holm, r.n] for r in linhas],
         hovertemplate="%{y}<br>%{customdata[0]} = %{x:.2f}<br>p = %{customdata[1]:.3f} · "
                       "p Holm = %{customdata[2]:.3f}<br>n = %{customdata[3]}<extra></extra>")
-    fig.update_xaxes(range=[-1, 1], title="tamanho de efeito (r, ρ, V ou ε²)")
+    fig.update_xaxes(range=[-1, 1], title="tamanho de efeito (r, ρ, φ, V ou ε²)")
     return _layout(fig, 90 + 42 * len(linhas), showlegend=False)
 
 
@@ -238,3 +238,23 @@ def rosca(serie: pd.Series, ordem: list[str] | None = None) -> go.Figure:
                            textinfo="percent", hovertemplate="%{label}: %{value} (%{percent})<extra></extra>"))
     fig.add_annotation(text=f"<b>{cont.sum()}</b><br>respostas", showarrow=False, font=dict(size=14))
     return _layout(fig, 300, legend=dict(orientation="h", y=-0.1))
+
+
+def proporcoes_por_grupo(tabela: pd.DataFrame, ordem_grupos: list[str]) -> go.Figure:
+    """Proporção por categoria e estrato, com IC 95% de Wilson.
+    tabela: colunas categoria, grupo, p, lo, hi, k, n."""
+    fig = go.Figure()
+    cats = list(dict.fromkeys(tabela["categoria"]))[::-1]
+    for i, g in enumerate(ordem_grupos):
+        t = tabela[tabela["grupo"] == g].set_index("categoria").reindex(cats)
+        fig.add_bar(y=cats, x=t["p"] * 100, orientation="h", name=g,
+                    marker_color=CATEGORICA[i % len(CATEGORICA)],
+                    error_x=dict(type="data", symmetric=False, array=(t["hi"] - t["p"]) * 100,
+                                 arrayminus=(t["p"] - t["lo"]) * 100, color="rgba(60,60,60,0.55)",
+                                 thickness=1.5, width=3),
+                    customdata=t[["k", "n", "lo", "hi"]].to_numpy(),
+                    hovertemplate=g + "<br>%{y}: %{x:.0f}% (%{customdata[0]} de %{customdata[1]})"
+                                  "<br>IC 95% Wilson: %{customdata[2]:.0%} a %{customdata[3]:.0%}<extra></extra>")
+    fig.update_xaxes(range=[0, 105], ticksuffix="%", title=None)
+    fig.update_layout(barmode="group", legend=dict(orientation="h", y=-0.12, x=0.5, xanchor="center"))
+    return _layout(fig, 120 + 34 * len(cats) * max(1, len(ordem_grupos)), bargap=0.25, bargroupgap=0.08)

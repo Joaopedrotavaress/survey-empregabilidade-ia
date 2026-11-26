@@ -101,38 +101,49 @@ def _limpa_texto(serie: pd.Series) -> pd.Series:
     return s.mask(s.isin(["", "nan", "None"]))
 
 
+def anonimizar(df: pd.DataFrame) -> pd.DataFrame:
+    """Deixa em branco os textos listados em C.TEXTOS_RETIRADOS; o resto da resposta continua."""
+    carimbo = df["ts"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    for ts, campos in C.TEXTOS_RETIRADOS.items():
+        df.loc[carimbo == ts, campos] = pd.NA
+    return df
+
+
 def preparar(bruto: pd.DataFrame) -> pd.DataFrame:
     df = renomear(bruto)
     for col in df.columns:
         if col != "ts":
             df[col] = _limpa_texto(df[col])
     df["ts"] = _data_hora(df["ts"])
+    df = anonimizar(df)
     df.insert(0, "id", range(1, len(df) + 1))
 
     for col in ("meses_busca", "candidaturas", "entrevistas", "exp_anos"):
         df[col] = pd.to_numeric(df[col].str.replace(",", "."), errors="coerce")
 
-    # codificação numérica (sufixo _n)
-    likert_cols = [c for b in C.BLOCOS_LIKERT.values() for c in b] + ["atencao"]
-    for col in likert_cols:
-        df[col + "_n"] = df[col].map(C.LIKERT)  # "Não sei avaliar" vira NaN
-    for nome, cfg in C.CONSTRUTOS.items():
-        for item in cfg["inv"]:
-            df[item + "_n"] = 6 - df[item + "_n"]
-    df["emp_vs_antes_n"] = df["emp_vs_antes"].map(C.COMPARACAO)
+    # codificação numérica (sufixo _n); "Não sei avaliar" vira ausente
+    for col in C.ITENS_LIKERT + ["atencao"]:
+        df[col + "_n"] = df[col].map(C.LIKERT)
     df["uso_ia_n"] = df["uso_ia"].map(C.USO_IA)
     df["prof_ia_n"] = df["prof_ia"].map(C.PROF_IA)
+    df["emp_vs_antes_n"] = df["emp_vs_antes"].map(C.COMPARACAO)
+    df["g1_grupo"] = df["emp_vs_antes"].map(C.G1_AGRUPADO)
+    for cfg in C.CONSTRUTOS.values():
+        for item in cfg["inv"]:
+            df[item + "_n"] = 6 - df[item + "_n"]
 
-    # índices dos construtos (média dos itens respondidos; exige ao menos metade)
-    for nome, cfg in C.CONSTRUTOS.items():
+    # escores M4, M5, M7, M8 (média dos itens; exige "minimo" itens respondidos)
+    for sigla, cfg in C.CONSTRUTOS.items():
         itens = df[[i + "_n" for i in cfg["itens"]]]
-        minimo = int(np.ceil(len(cfg["itens"]) / 2))
-        df[nome] = itens.mean(axis=1).where(itens.notna().sum(axis=1) >= minimo)
+        df[sigla] = itens.mean(axis=1).where(itens.notna().sum(axis=1) >= cfg["minimo"])
+    df["M6_piora"] = df["g1_grupo"].map({"Pior": 1, "Igual": 0, "Melhor": 0})
 
     # segmentos
     df["grupo_mercado"] = np.select(
         [df["situacao"].isin(C.DENTRO_MERCADO), df["situacao"].isin(C.FORA_MERCADO)],
-        ["Dentro do mercado", "Fora do mercado"], default=None)
+        C.M1_ORDEM, default=None)
+    df["grupo_mercado"] = df["grupo_mercado"].replace({"None": None})
+    df["m3"] = df["senioridade"].map(C.SENIORIDADE_GRUPO)
     faixas = pd.Series(pd.NA, index=df.index, dtype="object")
     for lo, hi, rot in C.FAIXAS_EXP:
         faixas[(df["exp_anos"] > lo) & (df["exp_anos"] <= hi)] = rot
@@ -140,22 +151,31 @@ def preparar(bruto: pd.DataFrame) -> pd.DataFrame:
     canais_conhecidos = {"Indicação de amigo(a) ou colega", "WhatsApp", "LinkedIn",
                          "Discord", "Telegram", "Reddit"}
     df["canal_grupo"] = df["canal"].where(df["canal"].isin(canais_conhecidos) | df["canal"].isna(), "Outro")
+    for i, opcao in enumerate(C.OPCOES_S1):
+        df[f"s1_{i}"] = df["mudancas"].fillna("").str.contains(opcao, regex=False).astype(float)             .where(df["mudancas"].notna())
     df["data"] = df["ts"].dt.date
     return df
 
 
+def _mesma_resposta_likert(d: pd.DataFrame) -> pd.Series:
+    """D4: todos os itens Likert respondidos com a mesma opção (contando os reversos sem inverter)."""
+    brutos = d[C.ITENS_LIKERT].apply(lambda s: s.map(C.LIKERT))
+    return (brutos.nunique(axis=1) == 1) & (brutos.notna().sum(axis=1) >= 4)
+
+
 MOTIVOS = [
-    ("Não aceitou o termo de consentimento",
+    ("D1 · Não aceitou o termo de consentimento",
      lambda d: d["consentimento"].isna() | ~d["consentimento"].fillna("").str.contains("aceito", case=False)
      | d["consentimento"].fillna("").str.contains("não aceito", case=False)),
-    ("Menor de 18 anos", lambda d: d["maior18"].ne("Sim")),
-    ("Colega da turma (regra da disciplina)", lambda d: d["turma"].eq("Sim")),
-    ("Fora da população (não atua nem busca atuar como dev)",
+    ("D1 · Menor de 18 anos", lambda d: d["maior18"].ne("Sim")),
+    ("D2 · Colega da turma", lambda d: d["turma"].eq("Sim")),
+    ("D2 · Fora da população (não atua nem busca atuar como dev)",
      lambda d: d["situacao"].isna() | d["situacao"].fillna("").str.startswith(C.FORA_POPULACAO_PREFIXO)),
-    ("Errou a pergunta de atenção", lambda d: d["atencao"].ne(C.RESPOSTA_ATENCAO)),
-    ("Questionário principal incompleto",
-     lambda d: d[[i + "_n" for i in C.CONSTRUTOS["Empregabilidade percebida hoje"]["itens"]]].isna().any(axis=1)),
+    ("D3 · Errou a pergunta de atenção (AT1)", lambda d: d["atencao"].ne(C.RESPOSTA_ATENCAO)),
+    ("D4 · Mesma resposta em todos os itens Likert", _mesma_resposta_likert),
 ]
+MOTIVO_DUPLICATA = "D5 · Resposta duplicada"
+ORDEM_MOTIVOS = [m for m, _ in MOTIVOS] + [MOTIVO_DUPLICATA]
 
 
 def aplicar_descartes(df: pd.DataFrame) -> pd.DataFrame:
@@ -166,11 +186,18 @@ def aplicar_descartes(df: pd.DataFrame) -> pd.DataFrame:
         alvo = (df["motivo_descarte"] == "Válida") & regra(df).fillna(True)
         df.loc[alvo, "motivo_descarte"] = motivo
 
-    # duplicatas: mesmas respostas em todas as perguntas (exceto data/hora)
+    # D5: respostas idênticas (todas as perguntas, exceto data/hora) enviadas com horários próximos
     resp = [c for c in C.COLUNAS if c != "ts"]
-    validas = df["motivo_descarte"] == "Válida"
-    dup = df[validas].duplicated(subset=resp, keep="first")
-    df.loc[dup[dup].index, "motivo_descarte"] = "Resposta duplicada"
+    validas = df[df["motivo_descarte"] == "Válida"].sort_values("ts")
+    chave = validas[resp].astype(object).fillna("").astype(str).agg("|".join, axis=1)
+    janela = pd.Timedelta(minutes=C.JANELA_DUPLICATA_MIN)
+    for _, grupo in validas.groupby(chave):
+        ultimo = None
+        for i, ts in grupo["ts"].items():
+            if ultimo is not None and ts - ultimo <= janela:
+                df.at[i, "motivo_descarte"] = MOTIVO_DUPLICATA
+            else:
+                ultimo = ts
     df["valida"] = df["motivo_descarte"] == "Válida"
     return df
 
@@ -179,13 +206,9 @@ def alertas_qualidade(df: pd.DataFrame) -> pd.DataFrame:
     """Inconsistências que não geram descarte automático, mas são mostradas para decisão do grupo."""
     v = df[df["valida"]]
     linhas = []
-    contraditorio = v["mudancas"].fillna("").str.contains("Não observei mudanças") & \
-        v["mudancas"].fillna("").str.contains(",")
+    contraditorio = v["mudancas"].fillna("").str.contains("Não observei mudanças") &         v["mudancas"].fillna("").str.contains(",")
     for i in v.index[contraditorio]:
         linhas.append((v.at[i, "id"], "Marcou 'Não observei mudanças' junto com outras mudanças"))
-    reto = v[[i + "_n" for i in ("emp1", "emp2", "emp3", "ia1", "ia2")]]
-    for i in v.index[(reto.nunique(axis=1) == 1) & reto.notna().all(axis=1)]:
-        linhas.append((v.at[i, "id"], "Mesma resposta em todos os itens Likert diretos (straight-lining)"))
     for i in v.index[v["entrevistas"] > v["candidaturas"]]:
         linhas.append((v.at[i, "id"], "Mais entrevistas do que candidaturas"))
     return pd.DataFrame(linhas, columns=["id", "alerta"])
