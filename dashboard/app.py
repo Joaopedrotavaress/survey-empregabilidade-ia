@@ -223,8 +223,6 @@ def pagina_perfil():
         st.subheader("Funil de limpeza")
         st.plotly_chart(G.funil_descartes(TODOS, [m for m, _ in D.MOTIVOS] + ["Resposta duplicada"]),
                         width="stretch")
-    st.subheader("Respostas por dia")
-    st.plotly_chart(G.linha_tempo(TODOS), width="stretch")
 
     st.divider()
     aviso_filtro()

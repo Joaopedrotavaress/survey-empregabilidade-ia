@@ -99,24 +99,6 @@ def barras_contagem(serie: pd.Series, ordem: list[str] | None = None, altura: in
     return _layout(fig, altura or 60 + 32 * len(cont), bargap=0.3)
 
 
-def linha_tempo(df: pd.DataFrame) -> go.Figure:
-    por_dia = df.groupby(["data", "valida"]).size().unstack(fill_value=0)
-    por_dia = por_dia.rename(columns={True: "Válidas", False: "Descartadas"})
-    fig = go.Figure()
-    for col, cor in (("Válidas", PRINCIPAL), ("Descartadas", "#c9c8c2")):
-        if col in por_dia:
-            fig.add_bar(x=por_dia.index.astype(str), y=por_dia[col], name=col, marker_color=cor,
-                        hovertemplate="%{x}: %{y} " + col.lower() + "<extra></extra>")
-    acumulado = df[df["valida"]].groupby("data").size().cumsum()
-    fig.add_scatter(x=acumulado.index.astype(str), y=acumulado.values, name="Válidas acumuladas",
-                    mode="lines+markers", line=dict(color=CATEGORICA[1], width=2), marker=dict(size=8),
-                    hovertemplate="%{x}: %{y} válidas acumuladas<extra></extra>")
-    fig.update_layout(barmode="stack", legend=dict(orientation="h", y=1.12))
-    fig.update_xaxes(type="category", showgrid=False)
-    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.15)", title="respostas")
-    return _layout(fig, 300)
-
-
 def caixa_por_grupo(df: pd.DataFrame, y: str, grupo: str, ordem: list[str] | None = None,
                     faixa: tuple[float, float] = (1, 5)) -> go.Figure:
     dados = df[[y, grupo]].dropna()
