@@ -1,0 +1,13 @@
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#fcfcfb"
+secondaryBackgroundColor = "#f3f2ef"
+textColor = "#1b1b1a"
+font = "sans serif"
+borderColor = "#e4e3df"
+showWidgetBorder = true
+baseRadius = "0.6rem"
+
+[server]
+runOnSave = true
